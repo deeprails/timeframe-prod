@@ -1,0 +1,213 @@
+/* Orb.css — High‑fidelity recreation of the original ChatGPT orb */
+
+/* ---------------- Core colour‑cycle & movement ---------------- */
+@keyframes breathe {
+  0%, 100% { transform: scale(1)   rotate(0deg);   opacity: .8; }
+  50%       { transform: scale(1.05) rotate(180deg); opacity: 1; }
+}
+
+@keyframes swirl {
+  0%   { transform: rotate(0deg)   scale(1);   }
+  25%  { transform: rotate(90deg)  scale(1.1); }
+  50%  { transform: rotate(180deg) scale(1);   }
+  75%  { transform: rotate(270deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(1);   }
+}
+
+/* Slowly hue‑rotates everything so the orb cycles through the full palette */
+@keyframes morph-colors {
+  0%   { filter: hue-rotate(0deg)   saturate(1.5); }
+  25%  { filter: hue-rotate(90deg)  saturate(2);   }
+  50%  { filter: hue-rotate(180deg) saturate(1.8); }
+  75%  { filter: hue-rotate(270deg) saturate(2.2); }
+  100% { filter: hue-rotate(360deg) saturate(1.5); }
+}
+
+@keyframes thinking-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: .8;
+    filter: saturate(1.5) brightness(1);
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 1;
+    filter: saturate(1.8) brightness(1.2);
+  }
+}
+
+@keyframes particle-float {
+  0%, 100% { transform: translateY(0)  translateX(0)  rotate(0);   }
+  25%      { transform: translateY(-5px) translateX(-8px) rotate(90deg);  }
+  50%      { transform: translateY(-10px) translateX(4px) rotate(180deg); }
+  75%      { transform: translateY(-12px) translateX(3px) rotate(270deg); }
+}
+
+/* Tiny in‑orb EQ bars */
+@keyframes waveform-bar-1 { 0%,100%{height:6px;opacity:.6;}  25%{height:14px;opacity:.9;} 50%{height:8px;opacity:.7;} 75%{height:16px;opacity:1;} }
+@keyframes waveform-bar-2 { 0%,100%{height:10px;opacity:.7;} 20%{height:12px;opacity:.8;} 40%{height:6px;opacity:.5;} 60%{height:18px;opacity:1;} 80%{height:8px;opacity:.6;} }
+@keyframes waveform-bar-3 { 0%,100%{height:8px;opacity:.5;}  30%{height:20px;opacity:1;}  60%{height:4px;opacity:.4;} 90%{height:12px;opacity:.8;} }
+@keyframes waveform-bar-4 { 0%,100%{height:12px;opacity:.8;} 15%{height:6px;opacity:.5;} 35%{height:16px;opacity:.9;} 55%{height:10px;opacity:.7;} 75%{height:14px;opacity:.8;} }
+@keyframes waveform-bar-5 { 0%,100%{height:8px;opacity:.6;}  40%{height:18px;opacity:1;}  70%{height:6px;opacity:.5;} }
+
+/* ---------------- Base structure ---------------- */
+.orb-container {
+  position: relative;
+  border-radius: 50%;
+  overflow: visible;
+  /* global colour‑shift */
+  animation: morph-colors 25s linear infinite;
+}
+
+.orb-layer {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+}
+
+/* Default / idle state */
+.orb-default .orb-layer:nth-child(1),
+.orb-listening .orb-layer:nth-child(1),
+.orb-speaking .orb-layer:nth-child(1) {
+  background: conic-gradient(from 0deg,
+    #ff006e,
+    #8338ec,
+    #3a86ff,
+    #06ffa5,
+    #ffbe0b,
+    #ff006e);
+  animation: breathe 4s ease-in-out infinite;
+}
+
+.orb-default .orb-layer:nth-child(2),
+.orb-listening .orb-layer:nth-child(2),
+.orb-speaking .orb-layer:nth-child(2) {
+  background: radial-gradient(circle at 30% 30%,
+    rgba(255,0,110,.8),
+    rgba(131,56,236,.6),
+    transparent 70%);
+  animation: swirl 6s linear infinite reverse;
+}
+
+.orb-default .orb-layer:nth-child(3),
+.orb-listening .orb-layer:nth-child(3),
+.orb-speaking .orb-layer:nth-child(3) {
+  background: radial-gradient(circle at 70% 70%,
+    rgba(58,134,255,.7),
+    rgba(6,255,165,.5),
+    transparent 60%);
+  animation: particle-float 5s ease-in-out infinite;
+}
+
+/* Processing – breathing + gentle pulse */
+.orb-processing .orb-layer:nth-child(1) {
+  background: conic-gradient(from 0deg,
+    #ff006e,
+    #8338ec,
+    #3a86ff,
+    #06ffa5,
+    #ffbe0b,
+    #ff006e);
+  animation: thinking-pulse 2.5s ease-in-out infinite;
+}
+
+/* ---------------- Ambient glow ---------------- */
+.orb-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(15px);
+  opacity: .6;
+}
+
+/* Include particle colours (green + yellow) in the glow so the orb always matches them */
+.orb-default .orb-glow,
+.orb-speaking .orb-glow {
+  background: radial-gradient(circle,
+    rgba(131,56,236,.3),
+    rgba(58,134,255,.25),
+    rgba(6,255,165,.3),
+    rgba(255,190,11,.3),
+    transparent 70%);
+  animation: breathe 4s ease-in-out infinite;
+}
+
+.orb-processing .orb-glow {
+  background: radial-gradient(circle,
+    rgba(131,56,236,.3),
+    rgba(58,134,255,.25),
+    rgba(6,255,165,.3),
+    rgba(255,190,11,.3),
+    transparent 70%);
+  animation: thinking-pulse 2.5s ease-in-out infinite;
+}
+
+/* Listening mode keeps things subtle – glow off */
+.orb-listening .orb-glow { display: none; }
+
+/* ---------------- Particles ---------------- */
+.orb-particles::before,
+.orb-particles::after {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.orb-particles::before {
+  top: 20%;
+  left: 30%;
+  background: rgba(6,255,165,.9);
+  animation: particle-float 3s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(6,255,165,.6);
+}
+
+.orb-particles::after {
+  bottom: 25%;
+  right: 35%;
+  background: rgba(255,190,11,.9);
+  animation: particle-float 2.5s ease-in-out infinite reverse;
+  box-shadow: 0 0 8px rgba(255,190,11,.6);
+}
+
+/* ---------------- Highlight overlay (white sheen) ---------------- */
+.orb-container .orb-highlight,
+.orb-container .mix-blend-mode-overlay {
+  position: absolute;
+  inset: .75rem; /* Tailwind's inset-3 */
+  border-radius: 50%;
+  background: rgba(255,255,255,.2);
+  mix-blend-mode: overlay;
+  filter: blur(2px);
+  pointer-events: none;
+  animation: pulse-wave 6s ease-in-out infinite;
+}
+
+/* ---------------- Internal waveform (listening) ---------------- */
+.waveform-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.waveform-bar {
+  width: 2px;
+  background: linear-gradient(to top, rgba(6,255,165,.9), rgba(58,134,255,.8));
+  border-radius: 1px;
+  transform-origin: bottom;
+}
+
+.waveform-bar:nth-child(1) { animation: waveform-bar-1 .8s  ease-in-out infinite; }
+.waveform-bar:nth-child(2) { animation: waveform-bar-2 .9s  ease-in-out infinite; }
+.waveform-bar:nth-child(3) { animation: waveform-bar-3 .7s  ease-in-out infinite; }
+.waveform-bar:nth-child(4) { animation: waveform-bar-4 1.1s ease-in-out infinite; }
+.waveform-bar:nth-child(5) { animation: waveform-bar-5 .6s  ease-in-out infinite; }

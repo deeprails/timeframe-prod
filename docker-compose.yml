@@ -1,0 +1,33 @@
+version: "3.9"
+services:
+  backend:
+    build: ./server
+    ports:
+      - "8000:8000"
+    devices:
+      - "/dev/video0:/dev/video0"    # camera
+      - "/dev/snd:/dev/snd"          # microphone / audio
+    group_add:
+      - "audio"                      # give access to audio group
+      - "video"
+    privileged: true                 # optional, for easier access to devices
+    environment:
+      - DISPLAY                      # pass display env if needed for cv2.imshow
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+    volumes:
+      - /run/user/1000/pulse:/run/user/1000/pulse
+    depends_on:
+      - db
+
+  frontend:
+    build: ./client
+    ports:
+      - "5173:5173"
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: timeframe_logs
+    ports:
+      - "3307:3306"
