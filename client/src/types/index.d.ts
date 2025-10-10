@@ -1,5 +1,5 @@
 type Modes = "idle" | "listening" | "thinking" | "speaking" | "away"
-type SocketEvents = Modes | "start-video-connection" | "stt-transcription" | "start-speaking" | "start-offline-speaking" | "stop-video-connection"
+type SocketEvents = Modes | "stt-transcription" | "start-speaking" | "start-offline-speaking" | "stop-video-connection" | "start-listening"
 type SocketResponse = {
   event: SocketEvents,
   data: string | null
@@ -11,6 +11,10 @@ interface StartLoopResponse {
 
 interface StopLoopResponse {
   "status": "stop"
+}
+
+interface GetAAITokenResponse {
+  token: string
 }
 
 interface IceServer {

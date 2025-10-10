@@ -11,6 +11,9 @@ from utils.state_manager import get_mode, set_mode
 from utils.logs_manager import LogManager, Log
 from contextlib import asynccontextmanager
 from datetime import datetime
+from utils.generate_streaming_token import get_token
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 # — Thread & control event —
 core_thread: threading.Thread | None = None
@@ -33,9 +36,8 @@ app = FastAPI(lifespan=lifespan)
 
 def core_loop():
     try:
-        while not stop_event.is_set():
-            detection_loop(stop_event)
-            start_stt(stop_event=stop_event, start_video_connection=True)
+        detection_loop(stop_event)
+        # start_stt(stop_event=stop_event, start_video_connection=True)
     except Exception as e:
         print("Main Exception", e)
         manager.broadcast("away")
@@ -45,9 +47,15 @@ def core_loop():
             detail=str(e),
             type="error"
         ))
-    finally:
-        stop_event.set()
-        # close_camera()
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=False,  # set True only if you actually send cookies/auth
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/start-loop")
@@ -76,7 +84,7 @@ def start_loop():
 
         core_thread = threading.Thread(target=core_loop, daemon=True)
         core_thread.start()
-    return {"status": "started"}
+    return JSONResponse({"ok": True, "data": {"status": "started"}}, status_code=200)
 
 
 @app.get("/stop-loop")
@@ -95,7 +103,7 @@ def stop_loop():
 
     # close_camera()
     close_mic()
-    return {"status": "stopping"}
+    return JSONResponse({"ok": True, "data": {"status": "stopping"}}, status_code=200)
 
 
 @app.get("/state")
@@ -105,7 +113,19 @@ def get_state():
     core_loop_running = core_thread.is_alive() if core_thread else False
     data = {"mode": mode, "web_socket_connected": web_socket_connected,
             "core_loop_running": core_loop_running}
-    return data
+    return JSONResponse({"ok": True, "data": data}, status_code=200)
+
+
+@app.get("/get-aai-token")
+def get_aai_token():
+    try:
+        token = get_token()
+        return JSONResponse({"token": token}, status_code=200)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
 
 
 @app.websocket("/ws")

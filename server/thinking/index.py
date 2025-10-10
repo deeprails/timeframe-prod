@@ -2,6 +2,7 @@ from utils.websocket_manager import manager
 from utils.internet import is_connected
 from thinking.llm_online import think as think_online
 from thinking.ll_offline import think as think_offline
+from utils.state_manager import set_mode
 from utils.logs_manager import LogManager, Conversation
 from datetime import datetime
 
@@ -11,8 +12,7 @@ log = LogManager()
 
 def think(input_txt):
     global chat
-
-    manager.broadcast("thinking")
+    set_mode("thinking")
     push_message({
         "role": "user",
         "content": input_txt

@@ -59,14 +59,38 @@ class ConnectionManager:
                             detail=f"[PAYLOAD]: {raw['text']}",
                         ))
 
-                        if self.connected and not stop_event.is_set():
+                        print(self.connected, not stop_event.is_set())
 
-                            if event == "back-to-listening":
-                                from stt.index import get_stt_instance
-                                stt = get_stt_instance()
-                                stt.reset()
-                                print("🔊  Mic un-muted, back to listening")
-                                log.commit_to_db()
+                        if self.connected:
+                            print(event)
+
+                            if event == "start-thinking":
+                                try:
+                                    from thinking.index import think
+                                    print("HERE", raw["text"])
+
+                                    think(data)
+                                except Exception as e:
+                                    print(str(e))
+                                    log.add_log(Log(
+                                        event=f"Think error",
+                                        detail=f"{e}",
+                                        type="error"
+                                    ))
+                            elif event == "back-to-idle":
+                                from presence_detection.index import detection_loop
+                                try:
+                                    with self.lock:
+                                        detection_thread = threading.Thread(
+                                            target=detection_loop, args=(stop_event,), daemon=True)
+                                        detection_thread.start()
+                                except Exception as e:
+                                    print(str(e))
+                                    log.add_log(Log(
+                                        event=f"Presence Detection error",
+                                        detail=f"{e}",
+                                        type="error"
+                                    ))
                             elif event == "speaking":
                                 set_mode("speaking")
                             elif event == "error":

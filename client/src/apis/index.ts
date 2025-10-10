@@ -22,3 +22,13 @@ export async function stopCoreLoopApiCall() {
     return false
   }
 }
+
+export async function getAAIToken() {
+  try {
+    const res = await axios.get<GetAAITokenResponse>("/get-aai-token")
+    return res.data
+  } catch (error) {
+    console.error(error)
+    return false
+  }
+}

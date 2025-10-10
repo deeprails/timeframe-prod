@@ -9,6 +9,8 @@ import subtitles from '../subtitles.json';
 import useCameraSender from '../hooks/useCameraSender';
 import { IDLE_VIDEO_PATH } from '../config';
 import TransparentButtons from './TransparentButtons';
+import useAAI from '../hooks/useAAI';
+import { getAAIToken } from '../apis';
 
 export default function Main() {
   const [mode, setMode] = useState<Modes>("idle");
@@ -20,8 +22,8 @@ export default function Main() {
     videoStream: false
   })
 
+
   function backToListeningTransition(type: 'textAnimation' | 'videoStream') {
-    console.log(speechComplete.current)
     if (type === 'textAnimation') {
       speechComplete.current.textAnimation = true
     } else if (type === 'videoStream') {
@@ -31,7 +33,14 @@ export default function Main() {
     if (speechComplete.current.textAnimation && speechComplete.current.videoStream) {
       const message = JSON.stringify({ event: "back-to-listening" });
       socket.send(message)
-      setMode("listening")
+      getAAIToken().then((res) => {
+        if (res) {
+          console.log(res)
+          startSTT(res.token)
+          setTranscription(null)
+          setMode("listening")
+        }
+      })
 
       // reset for next iteration
       speechComplete.current = {
@@ -46,6 +55,8 @@ export default function Main() {
     setTranscription,
     onStartSpeaking
   } = useTextDisplay(speakingText, backToListeningTransition)
+  const { startSTT } = useAAI({ setTranscription, setMode });
+
 
   const { connected, connect, sendText, destroy } = useVideoProviderService(idleRef, remoteRef, onStartSpeaking, setMode, backToListeningTransition)
   const pendingTextsRef = useRef<string[]>([]);
@@ -59,9 +70,12 @@ export default function Main() {
     const handleError = () => console.error('Failed to connect to web socket');
     const handleMsg = (event: MessageEvent<Modes>) => {
       const socketResponse: SocketResponse = JSON.parse(event.data)
-      if (socketResponse.event === "start-video-connection") {
+      if (socketResponse.event === "start-listening") {
+        const token = socketResponse.data!
         connect();
-      } else if (socketResponse.event == "stt-transcription") {
+        startSTT(token);
+      }
+      else if (socketResponse.event == "stt-transcription") {
         setTranscription(socketResponse.data!)
       } else if (socketResponse.event == "start-speaking") {
         if (connected) {
@@ -70,7 +84,6 @@ export default function Main() {
         } else {
           pendingTextsRef.current.push(socketResponse.data!);
         }
-
         setTranscription(null)
       } else if (socketResponse.event == "stop-video-connection") {
         console.log('stop-video-connection')
@@ -94,11 +107,9 @@ export default function Main() {
           onStartSpeaking()
         })
         videoElement.addEventListener("ended", () => {
-          console.log('ended')
           videoElement.style.opacity = '0'
           const message = JSON.stringify({ event: "back-to-listening" });
           ws.send(message)
-          setMode("listening")
         })
       } else if (socketResponse.event == "away") {
         setMode("away")

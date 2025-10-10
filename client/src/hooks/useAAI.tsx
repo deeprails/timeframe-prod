@@ -1,25 +1,50 @@
-import { useEffect, useRef, useState } from "react";
-import { WavRecorder } from "wavtools";
+import type { BeginEvent, TerminationEvent, TurnEvent } from "assemblyai";
+import { useRef, useState } from "react";
+import { socket as local_socket } from "../apis/socket";
 
-export default function useAAI() {
+interface Props {
+  setTranscription: React.Dispatch<React.SetStateAction<string | null>>
+  setMode: React.Dispatch<React.SetStateAction<Modes>>
+}
+type AAIMessage = BeginEvent | TurnEvent | TerminationEvent;
+
+export default function useAAI({ setTranscription, setMode }: Props) {
   const socket = useRef<WebSocket>(null);
   const audioContext = useRef<AudioContext>(null);
   const mediaStream = useRef<MediaStream>(null);
   const scriptProcessor = useRef<ScriptProcessorNode>(null);
 
-  const [transcripts, setTranscripts] = useState({});
+  const hasSpokenRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const startRecording = async () => {
-    const token = "AQICAHgniYaElTsUjrvXxctupi0J2iqJuH8-jsA2X_IMiWgmywGsVUeJXUARy6umYheSEVADAAADujCCA7YGCSqGSIb3DQEHBqCCA6cwggOjAgEAMIIDnAYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAwTiWwNan3gE_rqMfQCARCAggNtPsaRD5cQ4LuFxgogwpOCiD8CvUdtOxhhSra0XlMfo3ki-e4Ph3Odtp9F08_05ZEj5XygG8bWssv3xZ8Pay1DzQF5c-RYnkmk2o3RD3iOWWjKOmk69QGKOcg9RfPIbKuOFUqzD0zrV-YS9vLQgl0QpKRnpr40TGluswGQ6NcfrNzhS_6bc3cX0UAcA4YC2Kl0x4TbpuVt-hUuYie8PefJT9X3HzGWbvcxNlLPkCh2MgQfX9RUCkT0NuTozByX-15iWumK29u8aSWyd8cCx2xE8sI-uma_HBqq5xAbIcdPM4lfbWKJRIF-8gaY8xeEQIW9F8ba3SwaKwGez0hBloFT-WuT365NDFIewUraOgPjhInO_Wh-8qgDUCbH7eL_AaU2RoI_c-qYaIDgVdEZAecBT9SRrA8bt5H_F67EtdJxQQZS6CISticMZYvbgVMyXB5_DgEL1oUWikfgcfElMWghsNVJ_q4c5Zb7pCJHfGIxgUhmmwzHkPckjKTkYUA-gTqYXaXPXC-uB-LphmWWerSaDRtmxHjfJADh3pODGuT7VXAClX8Vwft5a85OcFJrFnwXi9IDNoaPevkPTwFhSvhb4Eal0ZzFHs6dnV833XR4bpeDxSj9Pxlxhdk59Vu721rLnWAqh82FToBOyRUQ41EDTuIZ3Pw80nhkwDRD20yqaT4GGAG9ZymCjRu-iBJSc60HsMuciq8iCNPl9MUnaUuLuomV5TrSXFWK-FL2qRbRxfJTYF7v8E-ylyYOafyt7gc7f7IzoYzBY84ipMiioJIV19_srNrZ25Pzzi2kDN05KOOS3RrBZsun3WcSjdcC54B49R3K8fawYfxkylM5HzFC_fRvHNF2k-XGF9m3x27JbG13KgVSZWsQBQUiREo1TfZVu4Dd2aTNpx1cQp8zDLtuvoZPtpZuoUwTH-aCLQM_vViuKFoFvGjZCX41WyYP4tB-5tmo9i6xKpIaNuPf0bKuKAOP_uLUHVgVQZ1pBcDeaSAzDzz-novFvFW_zodiLQvp4Ys3--Oww_wStlSo6Rk5kVTgrOAuU3qZbC9IJGpPbdmJIirwdDoiJIqovoBXGP4FXZasjvSMptO10wGQ_aESpMhm_KLK-oeHN645y2MtK_Q9GsQpcLnw9UNinN4O8b-TT4SOnOItreMlkuFm8A";
-    if (!token) return;
+  const startSilenceTimer = () => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = setTimeout(() => {
+      if (!hasSpokenRef.current) {
+        setMode("idle")
+        const payload = JSON.stringify({ event: "back-to-idle" })
+        local_socket.send(payload);
+      }
+    }, 8000);
+  };
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  };
 
-    const wsUrl = `wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&formatted_finals=true&token=${token}`;
+  const startSTT = async (token: string) => {
+    `wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&end_of_turn_confidence_threshold=0.9&max_turn_silence=2500&min_end_of_turn_silence_when_confident=1500`
+    const wsUrl = `wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&end_of_turn_confidence_threshold=0.9&max_turn_silence=2500&min_end_of_turn_silence_when_confident=1500&token=${token}`;
     socket.current = new WebSocket(wsUrl);
 
-    const turns = {}; // for storing transcript updates per turn
+    hasSpokenRef.current = false;
+    startSilenceTimer();
 
     socket.current.onopen = async () => {
       console.log('WebSocket connection established');
+      setMode("listening")
 
       mediaStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioContext.current = new AudioContext({ sampleRate: 16000 });
@@ -42,37 +67,47 @@ export default function useAAI() {
       };
     };
 
-    socket.current.onmessage = (event: MessageEvent) => {
-      const message = JSON.parse(event.data);
+    socket.current.onmessage = (event: MessageEvent<string>) => {
+      const message: AAIMessage = JSON.parse(event.data);
+      console.log(message)
 
       if (message.type === 'Turn') {
-        const { turn_order, transcript } = message;
-        turns[turn_order] = transcript;
+        const text = (message.transcript || "").trim();
 
-        const ordered = Object.keys(turns)
-          .sort((a, b) => Number(a) - Number(b))
-          .map((k) => turns[k])
-          .join(' ');
+        if (text && !hasSpokenRef.current) {
+          hasSpokenRef.current = true;
+          clearSilenceTimer();
+        }
 
-        console.log({ ...turns })
-        setTranscripts({ ...turns });
+        if (message.end_of_turn) {
+          setTranscription(message.transcript);
+          setTimeout(() => {
+            const payload = JSON.stringify({ event: "start-thinking", data: message.transcript })
+            local_socket.send(payload);
+            setMode("thinking");
+            stopSTT();
+          }, 1500)
+        } else {
+          setTranscription(message.transcript);
+        }
       }
     };
 
     socket.current.onerror = (err) => {
       console.error('WebSocket error:', err);
-      stopRecording();
+      clearSilenceTimer();
+      stopSTT();
     };
 
     socket.current.onclose = () => {
       console.log('WebSocket closed');
+      clearSilenceTimer();
       socket.current = null;
     };
   };
 
-  const stopRecording = () => {
-    setIsRecording(false);
-
+  const stopSTT = () => {
+    clearSilenceTimer();
     if (scriptProcessor.current) {
       scriptProcessor.current.disconnect();
       scriptProcessor.current = null;
@@ -95,15 +130,6 @@ export default function useAAI() {
     }
   };
 
-  const orderedTranscript = Object.keys(transcripts)
-    .sort((a, b) => Number(a) - Number(b))
-    .map((k) => transcripts[k])
-    .join(' ');
 
-  useEffect(() => {
-    startRecording()
-  }, [])
-
-
-  return { transcripts };
+  return { startSTT, stopSTT };
 }
