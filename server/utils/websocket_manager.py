@@ -59,16 +59,11 @@ class ConnectionManager:
                             detail=f"[PAYLOAD]: {raw['text']}",
                         ))
 
-                        print(self.connected, not stop_event.is_set())
-
                         if self.connected:
-                            print(event)
-
                             if event == "start-thinking":
                                 try:
                                     from thinking.index import think
-                                    print("HERE", raw["text"])
-
+                                    print("Thinking started")
                                     think(data)
                                 except Exception as e:
                                     print(str(e))
@@ -95,6 +90,11 @@ class ConnectionManager:
                                 set_mode("speaking")
                             elif event == "error":
                                 set_mode("error")
+                                log.add_log(Log(
+                                    event="error",
+                                    type="error",
+                                    detail=data
+                                ))
                                 log.commit_to_db()
                 except (ValueError, KeyError):
                     print("bad payload")

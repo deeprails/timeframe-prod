@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket,  HTTPException, status
+from fastapi import FastAPI, WebSocket,  HTTPException, status, Query
 import threading
 import asyncio
 import uvicorn
@@ -77,6 +77,7 @@ def start_loop():
         stop_event.clear()
         log.start_new_instance()
 
+        manager.broadcast("loop-started")
         log.add_log(Log(
             event="Start Loop Triggered ",
             detail="Instance Started",
@@ -88,13 +89,16 @@ def start_loop():
 
 
 @app.get("/stop-loop")
-def stop_loop():
+def stop_loop(broadcast: bool = Query(True, description="Whether to broadcast idle or not")):
     global core_thread
     stop_event.set()
     if core_thread:  # waiting for core thread to end
         core_thread.join()
         core_thread = None
-    manager.broadcast("idle")
+    
+    manager.broadcast("loop-stopped")
+    if broadcast:
+        manager.broadcast("idle")
 
     log.add_log(Log(
         event="Stop Loop Triggered ",

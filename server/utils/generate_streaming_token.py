@@ -1,5 +1,4 @@
 from config.stt import ASSEMBLYAI_API_KEY
-import os
 import requests
 
 
@@ -11,7 +10,9 @@ def get_token():
     }
     headers = {"Authorization": ASSEMBLYAI_API_KEY}
 
+    print("token req init")
     r = requests.get(url, headers=headers, params=params, timeout=10)
+    print("token response")
     r.raise_for_status()
     data = r.json()
     return data["token"]

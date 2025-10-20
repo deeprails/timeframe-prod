@@ -13,9 +13,9 @@ export async function startCoreLoopApiCall() {
   }
 }
 
-export async function stopCoreLoopApiCall() {
+export async function stopCoreLoopApiCall(broadcastIdle: boolean = true) {
   try {
-    const res = await axios.get<StopLoopResponse>("/stop-loop")
+    const res = await axios.get<StopLoopResponse>(`/stop-loop?broadcast=${broadcastIdle}`)
     return res.data
   } catch (error) {
     console.error(error)

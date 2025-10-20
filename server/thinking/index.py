@@ -33,6 +33,7 @@ def think(input_txt):
             "role": "assistant",
             "content": output_txt
         })
+        print(output_txt)
         manager.broadcast(event="start-speaking",
                           data=output_txt)  # trigger speak mode
     else:

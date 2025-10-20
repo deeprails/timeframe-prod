@@ -44,27 +44,31 @@ export default function useAAI({ setTranscription, setMode }: Props) {
 
     socket.current.onopen = async () => {
       console.log('WebSocket connection established');
-      setMode("listening")
+      setMode("listening");
 
       mediaStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioContext.current = new AudioContext({ sampleRate: 16000 });
 
       const source = audioContext.current.createMediaStreamSource(mediaStream.current);
-      scriptProcessor.current = audioContext.current.createScriptProcessor(4096, 1, 1);
+      try {
+        await audioContext.current.audioWorklet.addModule("/audio-processor.js");
+        console.log("🎧 Worklet loaded successfully");
+      } catch (err) {
+        console.error("❌ Failed to load audio worklet:", err);
+      }
 
-      source.connect(scriptProcessor.current);
-      scriptProcessor.current.connect(audioContext.current.destination);
+      const workletNode = new AudioWorkletNode(audioContext.current, "aai-processor");
+      source.connect(workletNode);
+      workletNode.connect(audioContext.current.destination);
 
-      scriptProcessor.current.onaudioprocess = (event) => {
+      workletNode.port.onmessage = (event) => {
         if (!socket.current || socket.current.readyState !== WebSocket.OPEN) return;
-
-        const input = event.inputBuffer.getChannelData(0);
-        const buffer = new Int16Array(input.length);
-        for (let i = 0; i < input.length; i++) {
-          buffer[i] = Math.max(-1, Math.min(1, input[i])) * 0x7fff;
-        }
-        socket.current.send(buffer.buffer);
+      
+        const base64 = arrayBufferToBase64(event.data);
+        socket.current.send(JSON.stringify({ audio_data: base64 }));
       };
+
+      startSilenceTimer();
     };
 
     socket.current.onmessage = (event: MessageEvent<string>) => {
@@ -132,4 +136,15 @@ export default function useAAI({ setTranscription, setMode }: Props) {
 
 
   return { startSTT, stopSTT };
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk as any);
+  }
+  return btoa(binary);
 }

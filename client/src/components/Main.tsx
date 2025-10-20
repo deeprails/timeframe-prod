@@ -9,11 +9,13 @@ import subtitles from '../subtitles.json';
 import useCameraSender from '../hooks/useCameraSender';
 import { IDLE_VIDEO_PATH } from '../config';
 import TransparentButtons from './TransparentButtons';
-import useAAI from '../hooks/useAAI';
+import useAAI from '../hooks/_useAAI';
 import { getAAIToken } from '../apis';
+import { cleanupAllConnections } from '../utils';
 
 export default function Main() {
   const [mode, setMode] = useState<Modes>("idle");
+  const coreLoop = useRef(false)
   const speakingText = useRef('')
   const idleRef = useRef<HTMLVideoElement>(null)
   const remoteRef = useRef<HTMLVideoElement>(null)
@@ -31,13 +33,14 @@ export default function Main() {
     }
 
     if (speechComplete.current.textAnimation && speechComplete.current.videoStream) {
+      if (!coreLoop.current) return;
       const message = JSON.stringify({ event: "back-to-listening" });
       socket.send(message)
       getAAIToken().then((res) => {
         if (res) {
-          console.log(res)
           startSTT(res.token)
           setTranscription(null)
+          console.log('line 42')
           setMode("listening")
         }
       })
@@ -55,7 +58,7 @@ export default function Main() {
     setTranscription,
     onStartSpeaking
   } = useTextDisplay(speakingText, backToListeningTransition)
-  const { startSTT } = useAAI({ setTranscription, setMode });
+  const { startSTT, stopSTT } = useAAI({ setTranscription, setMode });
 
 
   const { connected, connect, sendText, destroy } = useVideoProviderService(idleRef, remoteRef, onStartSpeaking, setMode, backToListeningTransition)
@@ -71,9 +74,11 @@ export default function Main() {
     const handleMsg = (event: MessageEvent<Modes>) => {
       const socketResponse: SocketResponse = JSON.parse(event.data)
       if (socketResponse.event === "start-listening") {
-        const token = socketResponse.data!
-        connect();
-        startSTT(token);
+        if (coreLoop.current) {
+          const token = socketResponse.data!
+          connect();
+          startSTT(token);
+        }
       }
       else if (socketResponse.event == "stt-transcription") {
         setTranscription(socketResponse.data!)
@@ -85,6 +90,7 @@ export default function Main() {
           pendingTextsRef.current.push(socketResponse.data!);
         }
         setTranscription(null)
+        console.log('line 189')
       } else if (socketResponse.event == "stop-video-connection") {
         console.log('stop-video-connection')
         destroy()
@@ -104,6 +110,7 @@ export default function Main() {
           setMode("speaking")
           const text = subtitles["1"];
           speakingText.current = text
+          console.log('line 113')
           onStartSpeaking()
         })
         videoElement.addEventListener("ended", () => {
@@ -117,7 +124,12 @@ export default function Main() {
         setTimeout(() => {
           setMode("thinking");
         }, 1000)
-      } else { // modes
+      } else if (socketResponse.event == "loop-stopped") {
+        coreLoop.current = false
+      } else if (socketResponse.event == "loop-started") {
+        coreLoop.current = true
+      }
+      else { // modes
         setMode(socketResponse.event);
       }
     };
@@ -141,17 +153,10 @@ export default function Main() {
   }, []);
 
   useEffect(() => {
-    if (navigator.onLine && !connected && mode != "idle") {
-      connect()
+    if (mode == "away") {
+      cleanupAllConnections({ stopSTT, destroyVideo: destroy })
     }
-  }, [connected, mode])
-
-  useEffect(() => {
-    if (mode == "listening" && speakingText.current != "") {
-      setTranscription(null)
-    }
-    console.log('mode', mode)
-  }, [mode])
+  }, [mode, setTranscription, stopSTT, destroy])
 
   useEffect(() => {
     if (!connected) return;
@@ -164,6 +169,10 @@ export default function Main() {
       }
     })();
   }, [connected, sendText]);
+
+  useEffect(() => {
+    console.log('coreLoop', coreLoop.current)
+  }, [coreLoop.current])
 
 
   return (

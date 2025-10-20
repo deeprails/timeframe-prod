@@ -65,6 +65,7 @@ export default function useTextDisplay(speakingText: React.RefObject<string>, on
   function onStartSpeaking() {
     // cancel any previous reveal
     revealAbortRef.current.aborted = true;
+    console.log('Trigger')
 
     // start a new reveal pass
     const text = speakingText.current || '';

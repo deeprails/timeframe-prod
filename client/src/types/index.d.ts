@@ -1,5 +1,5 @@
 type Modes = "idle" | "listening" | "thinking" | "speaking" | "away"
-type SocketEvents = Modes | "stt-transcription" | "start-speaking" | "start-offline-speaking" | "stop-video-connection" | "start-listening"
+type SocketEvents = Modes | "stt-transcription" | "start-speaking" | "start-offline-speaking" | "stop-video-connection" | "start-listening" | "loop-started" | "loop-stopped"
 type SocketResponse = {
   event: SocketEvents,
   data: string | null

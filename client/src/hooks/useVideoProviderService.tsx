@@ -2,27 +2,10 @@ import { useRef, useState, type RefObject } from "react";
 import { socket } from "../apis/socket";
 import { AGENT_ID, DID_CLIENT_KEY } from "../config";
 import * as sdk from "@d-id/client-sdk";
-
-/**
- * useDIDAgentStream – React hook for manual-mode D-ID Agents (SDK version)
- * -----------------------------------------------------------
- * - Uses the D-ID Agents SDK for connection, video, and control.
- * - `sendText()` speaks EXACTLY the text you pass (no LLM).
- */
+import { broadcastError } from "../utils";
 
 // SDK auth: use the Agent "client key" (from Studio Embed or Client Key API)
 const auth = { type: "key", clientKey: DID_CLIENT_KEY as string } as const;
-
-// Optional SDK stream options
-const streamOptions = { compatibilityMode: "auto", streamWarmup: true } as const;
-
-// ────────────────────────────────────────────────────────────────────────────────
-
-function broadcastError(e: unknown) {
-  const message = JSON.stringify({ event: "speaking", data: String(e) })
-  socket.send(message);
-
-}
 
 export default function useDIDAgentStream(
   idleRef: RefObject<HTMLVideoElement | null>,
@@ -34,15 +17,13 @@ export default function useDIDAgentStream(
   const [connected, setConnected] = useState(false);
   const agentManagerRef = useRef<Awaited<ReturnType<typeof sdk.createAgentManager>> | null>(null);
 
-  const streamStartTime = useRef<number | null>(null);
-
   // ── UI helpers (unchanged) ───────────────────────────────────────────────────
   const restartIdle = () => {
     const v = idleRef.current;
     if (!v) return;
     v.currentTime = 0;
     v.volume = 0;
-    v.play().catch(() => { });
+    v.play();
   };
 
   const fadeIn = () => {
@@ -65,17 +46,13 @@ export default function useDIDAgentStream(
         };
       } catch (error) {
         broadcastError(error)
-        throw error
+        setMode("away")
+        console.error(error)
       }
     },
     onConnectionStateChange(state) {
-      try {
-        console.log("D-ID connection:", state);
-        setConnected(state === "connected");
-      } catch (error) {
-        broadcastError(error)
-        throw error
-      }
+      console.log("D-ID connection:", state);
+      setConnected(state === "connected");
     },
     onVideoStateChange(state) {
       try {
@@ -85,23 +62,27 @@ export default function useDIDAgentStream(
           onVideoStreamEnd("videoStream");
         } else {
           fadeIn();
+          console.log('line 65')
           onStartSpeaking();
           socket.send(JSON.stringify({ event: "speaking" }));
           setMode("speaking");
         }
       } catch (error) {
         broadcastError(error)
-        throw error
+        setMode("away")
+        console.error(error)
       }
     },
     onError(err) {
       broadcastError(err)
+      console.error(err)
     },
   } satisfies sdk.ManagerCallbacks;
 
   // Create (or return existing) Agent Manager
   const ensureManager = async () => {
     if (!agentManagerRef.current) {
+      console.log('ensureManager()')
       try {
         agentManagerRef.current = await sdk.createAgentManager(AGENT_ID, {
           auth,
@@ -125,10 +106,12 @@ export default function useDIDAgentStream(
   /** Establish connection to the Agent (WebRTC etc. handled by SDK) */
   const connect = async () => {
     try {
+      console.log('connect trigger')
       const manager = await ensureManager();
       await manager.connect();
     } catch (error) {
       broadcastError(error)
+      setMode("away")
       throw error
     }
   };
@@ -149,18 +132,20 @@ export default function useDIDAgentStream(
 
   /** Cleanup */
   const destroy = async () => {
-    const manager = await ensureManager();
-    await manager.disconnect(); // closes stream and chat session
-    if (remoteRef.current) {
-      try {
-        remoteRef.current.pause();
-        remoteRef.current.srcObject = null;
-      } catch (error) {
-        broadcastError(error)
-        throw error
+    if (connected) {
+      const manager = await ensureManager();
+      await manager.disconnect(); // closes stream and chat session
+      if (remoteRef.current) {
+        try {
+          remoteRef.current.pause();
+          remoteRef.current.srcObject = null;
+        } catch (error) {
+          broadcastError(error)
+          throw error
+        }
       }
+      setConnected(false);
     }
-    setConnected(false);
   };
 
   return { connected, connect, sendText, destroy };

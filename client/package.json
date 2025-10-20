@@ -12,7 +12,7 @@
   "dependencies": {
     "@d-id/client-sdk": "^1.1.14",
     "@tailwindcss/vite": "^4.1.11",
-    "assemblyai": "^4.16.1",
+    "assemblyai": "^4.17.0",
     "axios": "^1.11.0",
     "lucide-react": "^0.539.0",
     "microphone-stream": "^6.0.1",
