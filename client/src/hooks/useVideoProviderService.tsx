@@ -122,6 +122,9 @@ export default function useDIDAgentStream(
       const manager = await ensureManager();
       // You can call speak without a preceding connect(); the SDK will auto-connect,
       // but we keep connect() explicit to match your flow.
+      if (!connected) {
+        await connect()
+      }
       await manager.speak({ type: "text", input: text });
       // SDK handles streaming and will invoke onVideoStateChange callbacks.
     } catch (error) {

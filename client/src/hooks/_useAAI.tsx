@@ -90,7 +90,7 @@ export default function useAAI({ setTranscription, setMode }: Props) {
     audioContextRef.current = new AudioContext({ sampleRate: 16000 });
     streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
     const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-    const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+    const processor = audioContextRef.current.createScriptProcessor(1024, 1, 1);
 
     source.connect(processor);
     processor.connect(audioContextRef.current.destination);
@@ -107,18 +107,39 @@ export default function useAAI({ setTranscription, setMode }: Props) {
   }
 
   const stopSTT = async () => {
-    if (realtimeTranscriber.current) {
+    try {
       clearSilenceTimer();
-      await realtimeTranscriber.current.close();
-    }
 
-    if (streamRef.current && audioContextRef.current) {
-      // stop mic
-      streamRef.current.getTracks().forEach(t => t.stop());
-      await audioContextRef.current.close();
+      // 🧹 Stop audio processing first
+      if (audioContextRef.current) {
+        // Disconnect processor & source if they exist
+        const ctx = audioContextRef.current;
+        ctx.suspend().catch(console.warn);
+      }
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+
+      // 🧩 Close the transcriber after audio stops flowing
+      if (realtimeTranscriber.current) {
+        try {
+          await realtimeTranscriber.current.close();
+        } catch (err) {
+          console.warn("[AAI] Error closing transcriber:", err);
+        }
+      }
+
+      // 🔇 Finally close the audio context
+      if (audioContextRef.current) {
+        await audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
 
       streamRef.current = null;
-      audioContextRef.current = null;
+      realtimeTranscriber.current = null;
+    } catch (error) {
+      console.error("[AAI stopSTT error]", error);
     }
   };
 
