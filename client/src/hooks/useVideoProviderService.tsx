@@ -14,8 +14,9 @@ export default function useDIDAgentStream(
   setMode: React.Dispatch<React.SetStateAction<Modes>>,
   onVideoStreamEnd: (type: "textAnimation" | "videoStream") => void
 ) {
-  const [connected, setConnected] = useState(false);
+  const connectedRef = useRef(false)
   const agentManagerRef = useRef<Awaited<ReturnType<typeof sdk.createAgentManager>> | null>(null);
+  const streamStartedRef = useRef(false)
 
   // ── UI helpers (unchanged) ───────────────────────────────────────────────────
   const restartIdle = () => {
@@ -52,20 +53,25 @@ export default function useDIDAgentStream(
     },
     onConnectionStateChange(state) {
       console.log("D-ID connection:", state);
-      setConnected(state === "connected");
+      connectedRef.current = state === "connected";
     },
     onVideoStateChange(state) {
       try {
+        console.log("STATE", state)
         if (state === "STOP") {
           restartIdle();
           fadeOut();
           onVideoStreamEnd("videoStream");
-        } else {
+          streamStartedRef.current = false;
+        } else if (state === "START") {
           fadeIn();
           console.log('line 65')
-          onStartSpeaking();
-          socket.send(JSON.stringify({ event: "speaking" }));
-          setMode("speaking");
+          if (!streamStartedRef.current) {
+            onStartSpeaking();
+            socket.send(JSON.stringify({ event: "speaking" }));
+            setMode("speaking");
+            streamStartedRef.current = true
+          }
         }
       } catch (error) {
         broadcastError(error)
@@ -117,15 +123,36 @@ export default function useDIDAgentStream(
     }
   };
 
+  // helpers (top of hook file)
+  const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+  async function waitForConnected(maxMs = 3000, stepMs = 500) {
+    const end = Date.now() + maxMs;
+    while (Date.now() < end) {
+      if (connectedRef.current) return true;
+      await sleep(stepMs);
+    }
+    return connectedRef.current; // one last check
+  }
+
+
   /** Speak EXACTLY `text` (no LLM). Pass SSML in `text` if desired (<speak>...</speak>) */
   const sendText = async (text: string) => {
     try {
       const manager = await ensureManager();
       // You can call speak without a preceding connect(); the SDK will auto-connect,
       // but we keep connect() explicit to match your flow.
-      if (!connected) {
+      console.log('State while sending', connectedRef.current)
+      while (!connectedRef.current) {
         await connect()
+        console.log('connection request sent')
+        const ok = await waitForConnected(3000, 500); // wait for connection for 3s with every 500ms wake and check if connection is established return true otherwise false
+        console.log('connection waiting done', ok)
+        if (!ok) {
+          throw new Error("D-ID: not connected within 3s; aborting speak()");
+        }
       }
+      console.log('send triggered')
       await manager.speak({ type: "text", input: text });
       // SDK handles streaming and will invoke onVideoStateChange callbacks.
     } catch (error) {
@@ -137,7 +164,7 @@ export default function useDIDAgentStream(
 
   /** Cleanup */
   const destroy = async () => {
-    if (connected) {
+    if (connectedRef.current) {
       const manager = await ensureManager();
       await manager.disconnect(); // closes stream and chat session
       if (remoteRef.current) {
@@ -149,9 +176,15 @@ export default function useDIDAgentStream(
           throw error
         }
       }
-      setConnected(false);
+      reset()
     }
   };
 
+  function reset() {
+    connectedRef.current = false;
+    streamStartedRef.current = false;
+  }
+
+  const connected = connectedRef.current;
   return { connected, connect, sendText, destroy };
 }
