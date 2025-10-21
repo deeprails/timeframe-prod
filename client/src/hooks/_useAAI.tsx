@@ -1,5 +1,5 @@
 import { StreamingTranscriber } from 'assemblyai';
-import React, { useRef, useState } from 'react'
+import React, { useReducer, useRef, useState } from 'react'
 import { socket as local_socket } from "../apis/socket";
 import { broadcastError } from '../utils';
 
@@ -16,6 +16,8 @@ export default function useAAI({ setTranscription, setMode }: Props) {
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const queuedRef = useRef<number>(0)
+  const connectedRef = useRef(false);
 
   const [eot, setEOT] = useState(false)
 
@@ -27,6 +29,7 @@ export default function useAAI({ setTranscription, setMode }: Props) {
         setMode("idle")
         const payload = JSON.stringify({ event: "back-to-idle" })
         local_socket.send(payload);
+        reset();
       }
     }, 8000);
   };
@@ -47,11 +50,13 @@ export default function useAAI({ setTranscription, setMode }: Props) {
     realtimeTranscriber.current.on("open", (event) => {
       console.log('WebSocket connection established');
       setMode("listening");
+      connectedRef.current = true;
 
       startSilenceTimer();
     })
 
     realtimeTranscriber.current.on("turn", async (event) => {
+      console.log("[TURN]", { eot: event.end_of_turn, len: (event.transcript||"").length });
       const message = event.transcript;
 
       const text = (message || "").trim();
@@ -81,28 +86,86 @@ export default function useAAI({ setTranscription, setMode }: Props) {
       setMode("away")
       clearSilenceTimer();
       stopSTT();
+      connectedRef.current = false;
+    })
+
+    realtimeTranscriber.current.on("close", () => {
+      reset();
     })
 
 
-    await realtimeTranscriber.current.connect();
+    const begin = await realtimeTranscriber.current.connect();
+
+    console.log(
+      "[AAI] begin.id:", begin.id,
+      "expires_at:", new Date(begin.expires_at * 1000).toISOString()
+    );
 
 
-    audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-    streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-    const processor = audioContextRef.current.createScriptProcessor(1024, 1, 1);
+    // audioContextRef.current = new AudioContext({ sampleRate: 16000 });
+    // streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
+    // const processor = audioContextRef.current.createScriptProcessor(1024, 1, 1);
 
-    source.connect(processor);
-    processor.connect(audioContextRef.current.destination);
+    // source.connect(processor);
+    // processor.connect(audioContextRef.current.destination);
 
-    processor.onaudioprocess = (e) => {
-      const input = e.inputBuffer.getChannelData(0);
-      const buffer = new Int16Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        const s = Math.max(-1, Math.min(1, input[i]));
-        buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    // processor.onaudioprocess = (e) => {
+    //   const input = e.inputBuffer.getChannelData(0);
+    //   const buffer = new Int16Array(input.length);
+    //   for (let i = 0; i < input.length; i++) {
+    //     const s = Math.max(-1, Math.min(1, input[i]));
+    //     buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    //   }
+    //   realtimeTranscriber.current?.sendAudio(buffer.buffer);
+    // };
+
+    audioContextRef.current = new AudioContext({ latencyHint: 'interactive' });
+
+    // Request mono, disable fancy DSP to reduce latency (tune as needed)
+    streamRef.current = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
       }
-      realtimeTranscriber.current?.sendAudio(buffer.buffer);
+    });
+
+    await audioContextRef.current.audioWorklet.addModule('/aai-worklet.js');
+
+    const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
+    const worklet = new AudioWorkletNode(audioContextRef.current, 'aai-worklet', {
+      processorOptions: { targetSampleRate: 16000 }
+    });
+
+    source.connect(worklet);
+
+    worklet.port.onmessage = (e) => {
+      if (e.data?.type !== 'audio') return;
+      if (!realtimeTranscriber.current) return;
+
+      const MAX_QUEUED = 50;
+
+      // simple backpressure: drop oldest if queue grows too large
+      if (queuedRef.current > MAX_QUEUED) {
+        queuedRef.current = 0; // reset counter; next frames will be fresh
+        return;
+      }
+
+      const pcm16 = floatToPCM16(e.data.samples);
+      queuedRef.current++;
+
+      // If the SDK exposes a promise or callback, hook it to decrement queued.
+      console.log('connected', connectedRef.current)
+      if (connectedRef.current) {
+        try {
+          console.log('pcm16.buffer', pcm16.buffer)
+          realtimeTranscriber.current.sendAudio(pcm16.buffer);
+        } finally {
+          queuedRef.current--;
+        }
+      }
     };
   }
 
@@ -133,15 +196,31 @@ export default function useAAI({ setTranscription, setMode }: Props) {
       // 🔇 Finally close the audio context
       if (audioContextRef.current) {
         await audioContextRef.current.close();
-        audioContextRef.current = null;
       }
 
-      streamRef.current = null;
-      realtimeTranscriber.current = null;
+      reset()
     } catch (error) {
       console.error("[AAI stopSTT error]", error);
     }
   };
 
+
+  function reset() {
+    audioContextRef.current = null;
+    streamRef.current = null;
+    realtimeTranscriber.current = null;
+    queuedRef.current = 0;
+    connectedRef.current = false;
+  }
+
   return { startSTT, stopSTT };
+}
+
+function floatToPCM16(f32: Float32Array) {
+  const out = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return out;
 }

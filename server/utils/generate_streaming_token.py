@@ -11,7 +11,7 @@ def get_token():
     headers = {"Authorization": ASSEMBLYAI_API_KEY}
 
     print("token req init")
-    r = requests.get(url, headers=headers, params=params, timeout=10)
+    r = requests.get(url, headers=headers, params=params)
     print("token response")
     r.raise_for_status()
     data = r.json()
