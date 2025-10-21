@@ -18,8 +18,7 @@ export default function useAAI({ setTranscription, setMode }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   const queuedRef = useRef<number>(0)
   const connectedRef = useRef(false);
-
-  const [eot, setEOT] = useState(false)
+  const eotRef = useRef(false)
 
 
   const startSilenceTimer = () => {
@@ -41,7 +40,7 @@ export default function useAAI({ setTranscription, setMode }: Props) {
   };
 
   async function startSTT(token: string) {
-    setEOT(false)
+    eotRef.current = false;
     realtimeTranscriber.current = new StreamingTranscriber({
       token,
       sampleRate: 16000,
@@ -66,8 +65,8 @@ export default function useAAI({ setTranscription, setMode }: Props) {
         clearSilenceTimer();
       }
 
-      if (event.end_of_turn && (event.transcript || "").length != 0 && !eot) {
-        setEOT(true)
+      if (event.end_of_turn && (event.transcript || "").length != 0 && !eotRef.current) {
+        eotRef.current = true;
         setTranscription(message);
         setTimeout(() => {
           const payload = JSON.stringify({ event: "start-thinking", data: message })
