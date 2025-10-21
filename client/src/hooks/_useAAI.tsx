@@ -56,7 +56,7 @@ export default function useAAI({ setTranscription, setMode }: Props) {
     })
 
     realtimeTranscriber.current.on("turn", async (event) => {
-      console.log("[TURN]", { eot: event.end_of_turn, len: (event.transcript||"").length });
+      console.log("[TURN]", { eot: event.end_of_turn, len: (event.transcript || "").length });
       const message = event.transcript;
 
       const text = (message || "").trim();
@@ -66,7 +66,7 @@ export default function useAAI({ setTranscription, setMode }: Props) {
         clearSilenceTimer();
       }
 
-      if (event.end_of_turn && event.transcript != '' && !eot) {
+      if (event.end_of_turn && (event.transcript || "").length != 0 && !eot) {
         setEOT(true)
         setTranscription(message);
         setTimeout(() => {

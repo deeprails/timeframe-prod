@@ -96,6 +96,7 @@ export default function useDIDAgentStream(
 
       } catch (error) {
         broadcastError(error)
+        setMode("away")
         throw error
       }
     }
@@ -129,6 +130,7 @@ export default function useDIDAgentStream(
       // SDK handles streaming and will invoke onVideoStateChange callbacks.
     } catch (error) {
       broadcastError(error)
+      setMode("away")
       throw error
     }
   };

@@ -153,10 +153,10 @@ export default function Main() {
   }, []);
 
   useEffect(() => {
-    if (mode == "away") {
+    if (mode == "away" || !coreLoop.current) {
       cleanupAllConnections({ stopSTT, destroyVideo: destroy })
     }
-  }, [mode, setTranscription, stopSTT, destroy])
+  }, [mode, coreLoop.current, setTranscription, stopSTT, destroy])
 
   useEffect(() => {
     if (!connected) return;
