@@ -14,9 +14,10 @@ export default function useDIDAgentStream(
   setMode: React.Dispatch<React.SetStateAction<Modes>>,
   onVideoStreamEnd: (type: "textAnimation" | "videoStream") => void
 ) {
-  const connectedRef = useRef(false)
+  const connectiondRef = useRef<sdk.ConnectionState>(sdk.ConnectionState.Disconnected)
   const agentManagerRef = useRef<Awaited<ReturnType<typeof sdk.createAgentManager>> | null>(null);
   const streamStartedRef = useRef(false)
+  const mediaReadyRef = useRef(false)
 
   // ── UI helpers (unchanged) ───────────────────────────────────────────────────
   const restartIdle = () => {
@@ -45,6 +46,8 @@ export default function useDIDAgentStream(
           v.onloadeddata = null;
           v.play().catch(console.error);
         };
+        mediaReadyRef.current = true
+        console.log('SrcObject is ready')
       } catch (error) {
         broadcastError(error)
         setMode("away")
@@ -53,7 +56,7 @@ export default function useDIDAgentStream(
     },
     onConnectionStateChange(state) {
       console.log("D-ID connection:", state);
-      connectedRef.current = state === "connected";
+      connectiondRef.current = state
     },
     onVideoStateChange(state) {
       try {
@@ -106,16 +109,18 @@ export default function useDIDAgentStream(
         throw error
       }
     }
-    return agentManagerRef.current!;
+    return agentManagerRef.current;
   };
 
   // ── Public API ───────────────────────────────────────────────────────────────
   /** Establish connection to the Agent (WebRTC etc. handled by SDK) */
   const connect = async () => {
     try {
-      console.log('connect trigger')
-      const manager = await ensureManager();
-      await manager.connect();
+      if (connectiondRef.current === sdk.ConnectionState.Disconnected) {
+        console.log('connect trigger')
+        const manager = await ensureManager();
+        await manager.connect();
+      }
     } catch (error) {
       broadcastError(error)
       setMode("away")
@@ -129,22 +134,25 @@ export default function useDIDAgentStream(
   async function waitForConnected(maxMs = 3000, stepMs = 500) {
     const end = Date.now() + maxMs;
     while (Date.now() < end) {
-      if (connectedRef.current) return true;
+      if (connectiondRef.current === sdk.ConnectionState.Connected) return true;
       await sleep(stepMs);
     }
-    return connectedRef.current; // one last check
+    return connectiondRef.current === sdk.ConnectionState.Connected; // one last check
   }
 
 
   /** Speak EXACTLY `text` (no LLM). Pass SSML in `text` if desired (<speak>...</speak>) */
   const sendText = async (text: string) => {
     try {
+      console.log('Send Text trigger', text)
       const manager = await ensureManager();
       // You can call speak without a preceding connect(); the SDK will auto-connect,
       // but we keep connect() explicit to match your flow.
-      console.log('State while sending', connectedRef.current)
-      while (!connectedRef.current) {
+      console.log('State while sending', connectiondRef.current)
+      if (connectiondRef.current === sdk.ConnectionState.Disconnected) {
         await connect()
+      }
+      while (connectiondRef.current !== sdk.ConnectionState.Connected) {
         console.log('connection request sent')
         const ok = await waitForConnected(3000, 500); // wait for connection for 3s with every 500ms wake and check if connection is established return true otherwise false
         console.log('connection waiting done', ok)
@@ -152,7 +160,7 @@ export default function useDIDAgentStream(
           throw new Error("D-ID: not connected within 3s; aborting speak()");
         }
       }
-      console.log('send triggered')
+      console.log('send triggered', mediaReadyRef.current)
       await manager.speak({ type: "text", input: text });
       // SDK handles streaming and will invoke onVideoStateChange callbacks.
     } catch (error) {
@@ -164,7 +172,7 @@ export default function useDIDAgentStream(
 
   /** Cleanup */
   const destroy = async () => {
-    if (connectedRef.current) {
+    if (connectiondRef.current === sdk.ConnectionState.Connected) {
       const manager = await ensureManager();
       await manager.disconnect(); // closes stream and chat session
       if (remoteRef.current) {
@@ -181,10 +189,12 @@ export default function useDIDAgentStream(
   };
 
   function reset() {
-    connectedRef.current = false;
+    connectiondRef.current = sdk.ConnectionState.Disconnected;
     streamStartedRef.current = false;
+    mediaReadyRef.current = false;
+    agentManagerRef.current = null;
   }
 
-  const connected = connectedRef.current;
+  const connected = connectiondRef.current === sdk.ConnectionState.Connected;
   return { connected, connect, sendText, destroy };
 }

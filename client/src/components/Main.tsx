@@ -83,12 +83,9 @@ export default function Main() {
       else if (socketResponse.event == "stt-transcription") {
         setTranscription(socketResponse.data!)
       } else if (socketResponse.event == "start-speaking") {
-        if (connected) {
-          sendText(socketResponse.data!)
-          speakingText.current = socketResponse.data!
-        } else {
-          pendingTextsRef.current.push(socketResponse.data!);
-        }
+        sendText(socketResponse.data!)
+        speakingText.current = socketResponse.data!
+
         setTranscription(null)
         console.log('line 189')
       } else if (socketResponse.event == "stop-video-connection") {
