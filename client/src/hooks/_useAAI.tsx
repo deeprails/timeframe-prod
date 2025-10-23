@@ -2,6 +2,7 @@ import { StreamingTranscriber } from 'assemblyai';
 import React, { useReducer, useRef, useState } from 'react'
 import { socket as local_socket } from "../apis/socket";
 import { broadcastError } from '../utils';
+import useLogger from './useLogger';
 
 interface Props {
   setTranscription: React.Dispatch<React.SetStateAction<string | null>>
@@ -19,6 +20,7 @@ export default function useAAI({ setTranscription, setMode }: Props) {
   const queuedRef = useRef<number>(0)
   const connectedRef = useRef(false);
   const eotRef = useRef(false)
+  const { logInfo } = useLogger();
 
 
   const startSilenceTimer = () => {
@@ -48,6 +50,9 @@ export default function useAAI({ setTranscription, setMode }: Props) {
 
     realtimeTranscriber.current.on("open", (event) => {
       console.log('WebSocket connection established');
+      logInfo({
+        event: "AAI webSocket connection established",
+      })
       setMode("listening");
       connectedRef.current = true;
 
@@ -66,6 +71,10 @@ export default function useAAI({ setTranscription, setMode }: Props) {
       }
 
       if (event.end_of_turn && (event.transcript || "").length != 0 && !eotRef.current) {
+        logInfo({
+          event: "AAI EOT triggered",
+          detail: JSON.stringify(event)
+        })
         eotRef.current = true;
         setTranscription(message);
         setTimeout(() => {
@@ -93,6 +102,9 @@ export default function useAAI({ setTranscription, setMode }: Props) {
     })
 
 
+    logInfo({
+      event: "AAI connection requested",
+    })
     const begin = await realtimeTranscriber.current.connect();
 
     console.log(
@@ -171,6 +183,9 @@ export default function useAAI({ setTranscription, setMode }: Props) {
   const stopSTT = async () => {
     try {
       clearSilenceTimer();
+      logInfo({
+        event: "AAI Stop triggered"
+      })
 
       // 🧹 Stop audio processing first
       if (audioContextRef.current) {

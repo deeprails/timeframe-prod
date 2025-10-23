@@ -12,6 +12,7 @@ import TransparentButtons from './TransparentButtons';
 import useAAI from '../hooks/_useAAI';
 import { getAAIToken } from '../apis';
 import { cleanupAllConnections } from '../utils';
+import useLogger from '../hooks/useLogger';
 
 export default function Main() {
   const [mode, setMode] = useState<Modes>("idle");
@@ -23,6 +24,7 @@ export default function Main() {
     textAnimation: false,
     videoStream: false
   })
+  const { logInfo, commitToDB } = useLogger();
 
 
   function backToListeningTransition(type: 'textAnimation' | 'videoStream') {
@@ -76,6 +78,10 @@ export default function Main() {
       if (socketResponse.event === "start-listening") {
         if (coreLoop.current) {
           const token = socketResponse.data!
+          logInfo({
+            event: "Token Created Speaking Start Trigger",
+            detail: `face is detected and token is also received for AAI session TOKEN:${token}`
+          })
           connect();
           startSTT(token);
         }
@@ -151,24 +157,31 @@ export default function Main() {
 
   useEffect(() => {
     if (mode == "away" || !coreLoop.current) {
-      cleanupAllConnections({ stopSTT, destroyVideo: destroy })
+      cleanupAllConnections({ stopSTT, destroyVideo: destroy }).then(() => {
+        commitToDB();
+      })
     }
   }, [mode, coreLoop.current, setTranscription, stopSTT, destroy])
 
-  useEffect(() => {
-    if (!connected) return;
-    (async () => {
-      const queue = pendingTextsRef.current;
-      pendingTextsRef.current = [];
-      for (const msg of queue) {
-        speakingText.current = msg
-        await sendText(msg);
-      }
-    })();
-  }, [connected, sendText]);
+  // useEffect(() => {
+  //   if (!connected) return;
+  //   (async () => {
+  //     const queue = pendingTextsRef.current;
+  //     pendingTextsRef.current = [];
+  //     for (const msg of queue) {
+  //       speakingText.current = msg
+  //       await sendText(msg);
+  //     }
+  //   })();
+  // }, [connected, sendText]);
 
   useEffect(() => {
-    console.log('coreLoop', coreLoop.current)
+    if (coreLoop.current) {
+      logInfo({
+        event: 'Core Loop started',
+        detail: "core loop start triggered"
+      })
+    }
   }, [coreLoop.current])
 
 

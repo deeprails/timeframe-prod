@@ -3,6 +3,7 @@ import { socket } from "../apis/socket";
 import { AGENT_ID, DID_CLIENT_KEY } from "../config";
 import * as sdk from "@d-id/client-sdk";
 import { broadcastError } from "../utils";
+import useLogger from "./useLogger";
 
 // SDK auth: use the Agent "client key" (from Studio Embed or Client Key API)
 const auth = { type: "key", clientKey: DID_CLIENT_KEY as string } as const;
@@ -18,6 +19,7 @@ export default function useDIDAgentStream(
   const agentManagerRef = useRef<Awaited<ReturnType<typeof sdk.createAgentManager>> | null>(null);
   const streamStartedRef = useRef(false)
   const mediaReadyRef = useRef(false)
+  const { logInfo } = useLogger();
 
   // ── UI helpers (unchanged) ───────────────────────────────────────────────────
   const restartIdle = () => {
@@ -56,6 +58,10 @@ export default function useDIDAgentStream(
     },
     onConnectionStateChange(state) {
       console.log("D-ID connection:", state);
+      logInfo({
+        event: "D-ID connection state change",
+        detail: `STATE: ${state}`
+      })
       connectiondRef.current = state
     },
     onVideoStateChange(state) {
@@ -65,15 +71,20 @@ export default function useDIDAgentStream(
           restartIdle();
           fadeOut();
           onVideoStreamEnd("videoStream");
+          logInfo({
+            event: "D-ID video stream end"
+          })
           streamStartedRef.current = false;
         } else if (state === "START") {
           fadeIn();
-          console.log('line 65')
           if (!streamStartedRef.current) {
             onStartSpeaking();
             socket.send(JSON.stringify({ event: "speaking" }));
             setMode("speaking");
             streamStartedRef.current = true
+            logInfo({
+              event: "D-ID video stream started"
+            })
           }
         }
       } catch (error) {
@@ -118,6 +129,9 @@ export default function useDIDAgentStream(
     try {
       if (connectiondRef.current === sdk.ConnectionState.Disconnected) {
         console.log('connect trigger')
+        logInfo({
+          event: "D-ID connection triggered"
+        })
         const manager = await ensureManager();
         await manager.connect();
       }
@@ -144,18 +158,22 @@ export default function useDIDAgentStream(
   /** Speak EXACTLY `text` (no LLM). Pass SSML in `text` if desired (<speak>...</speak>) */
   const sendText = async (text: string) => {
     try {
-      console.log('Send Text trigger', text)
+      logInfo({
+        event: "Send Text trigger",
+        detail: `Connection Status: ${connectiondRef.current} TEXT: ${text}`
+      })
       const manager = await ensureManager();
       // You can call speak without a preceding connect(); the SDK will auto-connect,
       // but we keep connect() explicit to match your flow.
-      console.log('State while sending', connectiondRef.current)
       if (connectiondRef.current === sdk.ConnectionState.Disconnected) {
         await connect()
       }
       while (connectiondRef.current !== sdk.ConnectionState.Connected) {
-        console.log('connection request sent')
+        logInfo({
+          event: "While sending text D-ID was not connected running 3s window logic for D-ID to connect",
+          detail: `Connection Status: ${connectiondRef.current}`
+        })
         const ok = await waitForConnected(3000, 500); // wait for connection for 3s with every 500ms wake and check if connection is established return true otherwise false
-        console.log('connection waiting done', ok)
         if (!ok) {
           throw new Error("D-ID: not connected within 3s; aborting speak()");
         }
@@ -173,6 +191,9 @@ export default function useDIDAgentStream(
   /** Cleanup */
   const destroy = async () => {
     if (connectiondRef.current === sdk.ConnectionState.Connected) {
+      logInfo({
+        event: "D-ID destroy triggered",
+      })
       const manager = await ensureManager();
       await manager.disconnect(); // closes stream and chat session
       if (remoteRef.current) {

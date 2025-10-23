@@ -7,7 +7,7 @@ import numpy as np
 from threading import Event
 import cv2
 from utils.frame_buffer import set_latest_frame
-from utils.logs_manager import LogManager, Log
+from utils.logs_manager import LogManager, Log, Conversation
 
 log = LogManager()
 
@@ -88,6 +88,20 @@ class ConnectionManager:
                                     ))
                             elif event == "speaking":
                                 set_mode("speaking")
+                            elif event == "info-log":
+                                log.add_log(Log(
+                                    event=data.get('event'),
+                                    detail=data.get('detail'),
+                                ))
+                            elif event == "conversation-log":
+                                log.add_conv(Conversation(
+                                    question=data.get('question'),
+                                    q_timestamp=data.get('q_timestamp'),
+                                    answer=data.get('answer'),
+                                    a_timestamp=data.get('a_timestamp')
+                                ))
+                            elif event == "save-logs":
+                                log.commit_to_db()
                             elif event == "error":
                                 set_mode("error")
                                 log.add_log(Log(

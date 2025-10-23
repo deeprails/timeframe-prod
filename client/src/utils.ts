@@ -21,4 +21,5 @@ export async function cleanupAllConnections({
   await stopSTT();
   await destroyVideo();
   await stopCoreLoopApiCall(false);
+  
 }
