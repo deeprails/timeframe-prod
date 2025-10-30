@@ -225,6 +225,7 @@ export default function useAAI({ setTranscription, setMode }: Props) {
     realtimeTranscriber.current = null;
     queuedRef.current = 0;
     connectedRef.current = false;
+    hasSpokenRef.current = false;
   }
 
   return { startSTT, stopSTT };
